@@ -2,7 +2,7 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <title>Omega Export Kontrola (Finálna verzia)</title>
+    <title>Omega Export Kontrola (Finálna verzia s číselníkom typov súm)</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
         h1 { color: #2c3e50; margin-bottom: 10px; }
@@ -22,7 +22,7 @@
         .invoice-block { background: #fff; padding: 15px; margin-bottom: 30px; border: 2px solid #bdc3c7; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .table-wrapper { overflow-x: auto; margin-bottom: 15px; }
         table { border-collapse: collapse; font-size: 12px; white-space: nowrap; margin-bottom: 10px; }
-        th, td { padding: 4px 8px; border: 1px solid #e0e0e0; text-align: left; }
+        th, td { padding: 6px 10px; border: 1px solid #e0e0e0; text-align: left; vertical-align: top; }
         
         .th-t04 { background-color: #8e44ad; color: white; }
         .th-r01 { background-color: #2980b9; color: white; }
@@ -34,6 +34,8 @@
         
         .error-cell { background-color: #ffcccc !important; color: #c0392b; font-weight: bold; }
         .highlight-2025 { background-color: #c8e6c9 !important; color: #27ae60; font-weight: bold; }
+        .sum-type-info { font-size: 11px; color: #555; margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 3px; }
+        .sum-type-badge { display: inline-block; background: #e0f2f1; color: #00796b; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-family: monospace; }
         .hidden { display: none !important; }		
     </style>
 </head>
@@ -55,9 +57,15 @@
     </div>
     <div>
         <label for="fileInput"><strong>Nahrať .txt export:</strong></label><br>
-        <input type="file" id="fileInput" accept=".txt" style="width: 600px;">
+        <input type="file" id="fileInput" accept=".txt" style="width: 400px;">
     </div>
-    <div id="filterControls" class="hidden" style="display:flex; gap:20px; flex-wrap: wrap; align-items: flex-end;">
+    <div>
+        <label><strong>Zobrazenie:</strong></label><br>
+        <label style="cursor: pointer; font-size: 14px; user-select: none;">
+            <input type="checkbox" id="toggleSumInfo" checked onchange="renderView()"> Zobraziť detaily typov súm v položkách
+        </label>
+    </div>
+    <div id="filterControls" class="hidden" style="display:flex; gap:20px; flex-wrap: wrap; align-items: flex-end; width: 100%;">
         <div>
             <label for="partnerFilter"><strong>Filter: Partneri (T04)</strong></label><br>
             <select id="partnerFilter">
@@ -76,7 +84,42 @@
 <div id="output"></div>
 
 <script>
-    // Presné mapovanie zodpovedajúce číslum stĺpcov v Exceli (začínajúce od 1)
+    // Kompletný číselník typov súm DPH (vrátane platných od roku 2025)
+    const sumTypesDictionary = {
+        "01": { nazov: "R01 Dodanie §8, 9 (znížený základ)", poznamka: "Základ dane pre zníženú sadzbu za tovar a služby", oddiel: "A1,C1,D1,D2" },
+        "02": { nazov: "R02 Dodanie §8, 9 (znížená daň)", poznamka: "Daň pre zníženú sadzbu za tovar a služby", oddiel: "A1,C1,D1,D2" },
+        "Y01*": { nazov: "R01 Dodanie §8, 9 (znížený základ 2)", poznamka: "Základ dane pre zníženú sadzbu 2 (5%)", oddiel: "A1,C1,D1,D2" },
+        "Y02*": { nazov: "R02 Dodanie §8, 9 (znížená daň 2)", poznamka: "Daň pre zníženú sadzbu 2 (5%)", oddiel: "A1,C1,D1,D2" },
+        "03": { nazov: "R03 Dodanie §8, 9 (základný základ)", poznamka: "Základ dane pre základnú sadzbu", oddiel: "A1,C1,D1,D2" },
+        "04": { nazov: "R04 Dodanie §8, 9 (základná daň)", poznamka: "Daň pre základnú sadzbu", oddiel: "A1,C1,D1,D2" },
+        "05": { nazov: "R05 Nadobudnutie tovaru tuz. §11 (zníž. základ)", poznamka: "Základ dane pre zníženú sadzbu z EÚ", oddiel: "B1" },
+        "06": { nazov: "R06 Nadobudnutie tovaru tuz. §11 (zníž. daň)", poznamka: "Daň pre zníženú sadzbu z EÚ", oddiel: "B1" },
+        "07": { nazov: "R07 Nadobudnutie tovaru tuz. §11 (zákl. základ)", poznamka: "Základ dane pre základnú sadzbu z EÚ", oddiel: "B1" },
+        "08": { nazov: "R08 Nadobudnutie tovaru tuz. §11 (zákl. daň)", poznamka: "Daň pre základnú sadzbu z EÚ", oddiel: "B1" },
+        "09": { nazov: "R09 Základný základ §69 ods. 2, 3 a 9-12", poznamka: "Samozdanenie - základ pre základnú sadzbu", oddiel: "B1" },
+        "10": { nazov: "R10 Základná daň §69 ods. 2, 3 a 9-12", poznamka: "Samozdanenie - daň pre základnú sadzbu", oddiel: "B1" },
+        "11": { nazov: "R11 2. odberateľ §69 ods. 7 (základný základ)", poznamka: "Trojstranný obchod - základ pre zákl. sadzbu", oddiel: "B1" },
+        "12": { nazov: "R12 2. odberateľ §69 ods. 7 (základná daň)", poznamka: "Trojstranný obchod - daň pre zákl. sadzbu", oddiel: "B1" },
+        "13": { nazov: "R13 Dodanie bez možnosti odpoč. §28-42, §43", poznamka: "Služby oslobodené od dane (ovplyvňuje koeficient)", oddiel: "X" },
+        "14": { nazov: "R14 Dodanie tov. s možnosťou odpoč. §43", poznamka: "Dodanie do EÚ oslobodené (Súhrnný výkaz)", oddiel: "X" },
+        "A": { nazov: "Kúpa tuzemsko §49 ods. 2a (základný základ)", poznamka: "Tuzemské došlé faktúry so základnou DPH", oddiel: "B2,B3,C2" },
+        "19A": { nazov: "R19 Kúpa tuzemsko §49 ods. 2a (základná daň)", poznamka: "DPH z tuzemských došlých faktúr", oddiel: "B2,B3,C2" },
+        "B": { nazov: "Základný základ §69 ods. 2-4,9-12 (§49 ods. 2b)", poznamka: "Samozdanenie došlé - základ pre zákl. sadzbu", oddiel: "B1" },
+        "19B": { nazov: "R19 Základná daň §69 ods. 2-4, 9-12 (§49 ods. 2b)", poznamka: "Samozdanenie došlé - daň pre zákl. sadzbu", oddiel: "B1" },
+        "C": { nazov: "Nadobud. tovaru z EÚ §49 ods. 2c (zákl. základ)", poznamka: "Nadobudnutie z EÚ - základ pre zákl. sadzbu", oddiel: "B1" },
+        "19C": { nazov: "R19 Nadobud. tovaru z EÚ §49 ods. 2c (zákl. daň)", poznamka: "Nadobudnutie z EÚ - daň pre zákl. sadzbu", oddiel: "B1" },
+        "D": { nazov: "Dovoz tovaru §49 ods. 2d (základný základ)", poznamka: "Dovoz z tretích štátov (JCD) - základ", oddiel: "X" },
+        "19D": { nazov: "R19 Dovoz tovaru §49 ods. 2d (základná daň)", poznamka: "Dovoz z tretích štátov (JCD) - daň", oddiel: "X" },
+        "OA2": { nazov: "Dod.tov.a sl. §69 ods.12 pís.f)-j) bez Súhr.výk.", poznamka: "Tuzemský prenos daňovej povinnosti (stavebné práce a pod.)", oddiel: "A2" },
+        "KV": { nazov: "Kúpa bez nároku na odpočet DPH (základný základ)", poznamka: "Nezaradené do DP DPH, len do KV (reprezentácia a pod.)", oddiel: "B2,B3,C2" },
+        "KV23*": { nazov: "Kúpa bez nároku na odpočet DPH (základná daň)", poznamka: "Daň bez nároku na odpočet (reprezentácia a pod.)", oddiel: "B2,B3,C2" },
+        "S": { nazov: "Suma spolu", poznamka: "Súčet základov a DPH", oddiel: "X" },
+        "V": { nazov: "Voľný základ", poznamka: "Nezahŕňa sa do DPH ani do výkazov (poštovné, neplatitelia)", oddiel: "X" },
+        "P": { nazov: "Preddavok", poznamka: "Uhradený preddavok (vyžaduje prepojenie na doklad úhrady)", oddiel: "X" },
+        "Z": { nazov: "Vzájomný zápočet", poznamka: "Zápočet faktúr (vyžaduje prepojenie na doklad)", oddiel: "X" }
+    };
+
+    // Presné mapovanie stĺpcov v Exceli (začínajúce od 1)
     const T04_R01_Map = [
         "[1] A - R01", "[2] B - meno firmy", "[3] C - ICO", "[4] D - ulica", "[5] E - PSC", "[6] F - mesto", 
         "[7] G - DIC/DU", "[8] H - stat", "[9] I - kod", "[10] J - stredisko", "[11] K - prevadzka", "[12] L - FO", 
@@ -286,9 +329,30 @@
         }
         else if (section === 'T01' && rowType === 'R02') {
             const ver = document.getElementById('versionSelect').value;
-            if (ver === '2025' && colIndex === 29 && ["01", "02", "Y01*", "Y02*"].includes(finalVal.trim())) {
-                cellClass = "highlight-2025";
-                finalVal += " ✓";
+            const showSumInfo = document.getElementById('toggleSumInfo').checked;
+
+            // Kontrola stĺpca AD (index 29 - typ DPH)
+            if (colIndex === 29) {
+                const codeTrim = finalVal.trim();
+                const dictEntry = sumTypesDictionary[codeTrim];
+                
+                if (ver === '2025' && ["01", "02", "Y01*", "Y02*"].includes(codeTrim)) {
+                    cellClass = "highlight-2025";
+                }
+
+                if (showSumInfo) {
+                    if (dictEntry) {
+                        finalVal += `<div class="sum-type-info">
+                            <span class="sum-type-badge">${codeTrim}</span> <strong>${dictEntry.nazov}</strong><br>
+                            <em>${dictEntry.poznamka}</em><br>
+                            <strong>Oddiel KV:</strong> <span style="color:#c0392b">${dictEntry.oddiel}</span>
+                        </div>`;
+                    } else if (codeTrim !== "") {
+                        finalVal += `<div class="sum-type-info" style="color: #c0392b;">
+                            ⚠️ <strong>Neznámy typ sumy v číselníku!</strong>
+                        </div>`;
+                    }
+                }
             }
         }
 
