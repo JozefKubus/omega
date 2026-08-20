@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <title>Omega Export Kontrola (Finálna verzia)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
+        h1 { color: #2c3e50; margin-bottom: 10px; }
+        h2, h3, h4 { color: #34495e; margin-bottom: 5px; }
+        
+        .info-panel { background-color: #e8f4f8; border-left: 5px solid #3498db; padding: 15px; margin-bottom: 20px; border-radius: 4px; font-size: 14px; line-height: 1.5; }
+        .info-panel.v-2024 { background-color: #fdf2e9; border-left-color: #e67e22; }
+        .info-panel a { color: #2980b9; font-weight: bold; text-decoration: none; }
+        .info-panel.v-2024 a { color: #d35400; }
+        .info-panel a:hover { text-decoration: underline; }
+        .info-panel code { background-color: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 3px; font-weight: bold; }
+        
+        .controls-area { margin-bottom: 20px; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        select, input[type="file"] { padding: 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+        select { min-width: 250px; }
+        
+        .invoice-block { background: #fff; padding: 15px; margin-bottom: 30px; border: 2px solid #bdc3c7; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .table-wrapper { overflow-x: auto; margin-bottom: 15px; }
+        table { border-collapse: collapse; font-size: 12px; white-space: nowrap; margin-bottom: 10px; }
+        th, td { padding: 4px 8px; border: 1px solid #e0e0e0; text-align: left; }
+        
+        .th-t04 { background-color: #8e44ad; color: white; }
+        .th-r01 { background-color: #2980b9; color: white; }
+        .th-r02 { background-color: #16a085; color: white; }
+        
+        .r01 td { background-color: #ecf0f1; font-weight: bold; }
+        .r02 td { background-color: #fff; }
+        tr:hover td { background-color: #f1c40f !important; color: #000; }
+        
+        .error-cell { background-color: #ffcccc !important; color: #c0392b; font-weight: bold; }
+        .highlight-2025 { background-color: #c8e6c9 !important; color: #27ae60; font-weight: bold; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<h1>Kontrola Odoo -> Omega Exportu</h1>
+
+<div id="infoPanel" class="info-panel">
+    <div id="infoContent"></div>
+</div>
+
+<div class="controls-area">
+    <div>
+        <label for="versionSelect"><strong>Zvoľte verziu (legislatívny rok):</strong></label><br>
+        <select id="versionSelect" onchange="switchVersion()">
+            <option value="2025">Doklady od roku 2025</option>
+            <option value="2024">Doklady do roku 2024</option>
+        </select>
+    </div>
+    <div>
+        <label for="fileInput"><strong>Nahrať .txt export:</strong></label><br>
+        <input type="file" id="fileInput" accept=".txt">
+    </div>
+    <div id="filterControls" class="hidden" style="display:flex; gap:20px; flex-wrap: wrap; align-items: flex-end;">
+        <div>
+            <label for="partnerFilter"><strong>Filter: Partneri (T04)</strong></label><br>
+            <select id="partnerFilter">
+                <option value="ALL">-- Zobraziť všetkých --</option>
+            </select>
+        </div>
+        <div>
+            <label for="invoiceFilter"><strong>Filter: Faktúry (T01)</strong></label><br>
+            <select id="invoiceFilter">
+                <option value="ALL">-- Zobraziť všetky --</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div id="output"></div>
+
+<script>
+    // Presné mapovanie zodpovedajúce číslum stĺpcov v Exceli (začínajúce od 1)
+    const T04_R01_Map = [
+        "[1] A - R01", "[2] B - meno firmy", "[3] C - ICO", "[4] D - ulica", "[5] E - PSC", "[6] F - mesto", 
+        "[7] G - DIC/DU", "[8] H - stat", "[9] I - kod", "[10] J - stredisko", "[11] K - prevadzka", "[12] L - FO", 
+        "[13] M - platitel DPH", "[14] N - e-mail", "[15] O - http", "[16] P - bankovy ucet", "[17] Q - kod banky", 
+        "[18] R - nazov uctu", "[19] S - tel1", "[20] T - tel2", "[21] U - tel3", "[22] V - fax", "[23] W - poznamka", 
+        "[24] X - interné číslo", "[25] Y - Kod IC DPH", "[26] Z - IČ DPH", "[27] AA - DIČ", "[28] AB - IČO poradové číslo", 
+        "[29] AC - Hlásiť neplatiča po lehote", "[30] AD - Hlásiť neplatiča všetky", "[31] AE - Zakázať vystaviť doklad", 
+        "[32] AF - Občan", "[33] AG - IBAN", "[34] AH - SWIFT", "[35] AI - Sadzba DPH"
+    ];
+
+    const T01_R01_Map_2025 = [
+        "[1] A - R01", "[2] B - cislo dokladu", "[3] C - meno partnera", "[4] D - ICO", "[5] E - datum vystavenia/prijatia", 
+        "[6] F - datum splatnosti", "[7] G - DUZP", "[8] H - Zaklad Nizsia", "[9] I - Zaklad Vyssia", "[10] J - Zaklad 0", 
+        "[11] K - Zaklad Neobsahuje", "[12] L - Sadzba Nizsia", "[13] M - Sadzba Vyssia", "[14] N - Suma DPH nizsia", 
+        "[15] O - Suma DPH vyssia", "[16] P - Halierove vyrovnanie", "[17] Q - Suma spolu CM", "[18] R - typ dokladu", 
+        "[19] S - kod Ev", "[20] T - kod CR", "[21] U - interne cislo partnera", "[22] V - kod partnera", "[23] W - stredisko", 
+        "[24] X - prevadzka", "[25] Y - ulica", "[26] Z - PSC", "[27] AA - mesto", "[28] AB - DIC/DU", "[29] AC - cas vystavenia", 
+        "[30] AD - dod. Podmienky", "[31] AE - uvod", "[32] AF - zaver", "[33] AG - dod. List", "[34] AH - cislo objednavky", 
+        "[35] AI - vystavil", "[36] AJ - KS", "[37] AK - SS", "[38] AL - forma uhrady", "[39] AM - sposob dopravy", 
+        "[40] AN - Mena", "[41] AO - Mnozstvo jednotky", "[42] AP - Kurz", "[43] AQ - Suma spolu TM", "[44] AR - Zakazkovy list", 
+        "[45] AS - poznamka", "[46] AT - predmet fakturacie", "[47] AU - partner stat", "[48] AV - Kod IC DPH", "[49] AW - IC DPH", 
+        "[50] AX - Dodavatel cislo uctu", "[51] AY - Dodavatel banka", "[52] AZ - Dodavatel pobocka", "[53] BA - partner stat", 
+        "[54] BB - Kod vystavil", "[55] BC - Partner meno skratka", "[56] BD - Dodavatel SWIFT", "[57] BE - Dodavatel IBAN", 
+        "[58] BF - Dodavatel kod statu DPH", "[59] BG - Dodavatel IC pre DPH", "[60] BH - Dodavatel stat", "[61] BI - Zaokruhlenie", 
+        "[62] BJ - Sposob zaokruhlenia", "[63] BK - IČO poradové číslo", "[64] BL - Zaokruhlenie položky", "[65] BM - Sprievodny text k preddavku", 
+        "[66] BN - Suma preddavku", "[67] BO - Spôsob výpočtu DPH", "[68] BP - Starý spôsob výpočtu DPH", "[69] BQ - Datum vystavenia DF", 
+        "[70] BR - Úhradené cez ECR", "[71] BS - VS", "[72] BT - Poštová adresa - Kontaktná osoba", "[73] BU - Poštová adresa - Firma", 
+        "[74] BV - Poštová adresa - Stredisko", "[75] BW - Poštová adresa - Prevádzka", "[76] BX - Poštová adresa - Ulica", 
+        "[77] BY - Poštová adresa - PSČ", "[78] BZ - Poštová adresa - Mesto", "[79] CA", "[80] CB - Typ zľavy za doklad", 
+        "[81] CC - Zľava za doklad", "[82] CD - rezervované", "[83] CE - Kontaktná osoba", "[84] CF - Telefón", 
+        "[85] CG - Uplatňovanie DPH podľa úhrad", "[86] CH - Doklad obsahuje makrokarty vystavené po starom", "[87] CI - IBAN partnera", 
+        "[88] CJ - Číslo účtu partnera", "[89] CK - JeOSS", "[90] CL - Kod štátu OSS", "[91] CM - Smerovanie OSS", 
+        "[92] CN - OSS kód štátu prevádzky", "[93] CO - OSS pôvodný kvartál", "[94] CP - OSS rok pôvodného kvartálu", 
+        "[95] CQ - Sadzba znížená 2", "[96] CR - Základ znížená 2", "[97] CS - Suma DPH znížená 2"
+    ];
+
+    const T01_R01_Map_2024 = [
+        "[1] A - R01", "[2] B - cislo dokladu", "[3] C - meno partnera", "[4] D - ICO", "[5] E - datum vystavenia/prijatia", 
+        "[6] F - datum splatnosti", "[7] G - DUZP", "[8] H - Zaklad Nizsia", "[9] I - Zaklad Vyssia", "[10] J - Zaklad 0", 
+        "[11] K - Zaklad Neobsahuje", "[12] L - Sadzba Nizsia", "[13] M - Sadzba Vyssia", "[14] N - Suma DPH nizsia", 
+        "[15] O - Suma DPH vyssia", "[16] P - Halierove vyrovnanie", "[17] Q - Suma spolu CM", "[18] R - typ dokladu", 
+        "[19] S - kod Ev", "[20] T - kod CR", "[21] U - interne cislo partnera", "[22] V - kod partnera", "[23] W - stredisko", 
+        "[24] X - prevadzka", "[25] Y - ulica", "[26] Z - PSC", "[27] AA - mesto", "[28] AB - DIC/DU", "[29] AC - cas vystavenia", 
+        "[30] AD - dod. Podmienky", "[31] AE - uvod", "[32] AF - zaver", "[33] AG - dod. List", "[34] AH - cislo objednavky", 
+        "[35] AI - vystavil", "[36] AJ - KS", "[37] AK - SS", "[38] AL - forma uhrady", "[39] AM - sposob dopravy", 
+        "[40] AN - Mena", "[41] AO - Mnozstvo jednotky", "[42] AP - Kurz", "[43] AQ - Suma spolu TM", "[44] AR - Zakazkovy list", 
+        "[45] AS - poznamka", "[46] AT - predmet fakturacie", "[47] AU - partner stat", "[48] AV - Kod IC DPH", "[49] AW - IC DPH", 
+        "[50] AX - Dodavatel cislo uctu", "[51] AY - Dodavatel banka", "[52] AZ - Dodavatel pobocka", "[53] BA - partner stat", 
+        "[54] BB - Kod vystavil", "[55] BC - Partner meno skratka", "[56] BD - Dodavatel SWIFT", "[57] BE - Dodavatel IBAN", 
+        "[58] BF - Dodavatel kod statu DPH", "[59] BG - Dodavatel IC pre DPH", "[60] BH - Dodavatel stat", "[61] BI - Zaokruhlenie", 
+        "[62] BJ - Sposob zaokruhlenia", "[63] BK - IČO poradové číslo", "[64] BL - Zaokruhlenie položky", "[65] BM - Sprievodny text k preddavku", 
+        "[66] BN - Suma preddavku", "[67] BO - Spôsob výpočtu DPH", "[68] BP - Starý spôsob výpočtu DPH", "[69] BQ - Datum vystavenia DF", 
+        "[70] BR - Úhradené cez ECR", "[71] BS - VS", "[72] BT - Poštová adresa - Kontaktná osoba", "[73] BU - Poštová adresa - Firma", 
+        "[74] BV - Poštová adresa - Stredisko", "[75] BW - Poštová adresa - Prevádzka", "[76] BX - Poštová adresa - Ulica", 
+        "[77] BY - Poštová adresa - PSČ", "[78] BZ - Poštová adresa - Mesto", "[79] CA", "[80] CB - Typ zľavy za doklad", 
+        "[81] CC - Zľava za doklad", "[82] CD - rezervované", "[83] CE - Kontaktná osoba", "[84] CF - Telefón", 
+        "[85] CG - Uplatňovanie DPH podľa úhrad", "[86] CH - Doklad obsahuje makrokarty vystavené po starom", "[87] CI - IBAN partnera", 
+        "[88] CJ - Číslo účtu partnera", "[89] CK - JeOSS", "[90] CL - Kod štátu OSS", "[91] CM - Smerovanie OSS", 
+        "[92] CN - Kód štátu prevádzky OSS", "[93] CO - Kvartál pre zaradenie do OSS", "[94] CP - Rok pre zaradenie do OSS"
+    ];
+
+    const T01_R02_Map = [
+        "[1] A - R02", "[2] B - nazov polozky", "[3] C - mnozstvo", "[4] D - MJ", "[5] E - jedn. cena bez DPH", 
+        "[6] F - sadzba DPH", "[7] G - skladova cena", "[8] H - cennikova cena", "[9] I - percento zlava", "[10] J - typ polozky", 
+        "[11] K - cudzi nazov", "[12] L - EAN", "[13] M - PLU", "[14] N - S ucet", "[15] O - A ucet", "[16] P - colny sadzobnik", 
+        "[17] Q - JKPOV", "[18] R - cislo karty/sluzby", "[19] S - volna polozka", "[20] T - nazov skladu", "[21] U - kod stredisko", 
+        "[22] V - nazov stredisko", "[23] W - kod zakazka", "[24] X - nazov zakazka", "[25] Y - kod cinnost", "[26] Z - nazov cinnost", 
+        "[27] AA - kod pracovnik", "[28] AB - meno pracovnik", "[29] AC - priezvisko pracovnik", "[30] AD - typ DPH", "[31] AE - Pripravene", 
+        "[32] AF - Dodane", "[33] AG - Vybavene", "[34] AH - PripraveneMR", "[35] AI - DodaneMR", "[36] AJ - Rezervovane", 
+        "[37] AK - RezervovaneMR", "[38] AL - MJ odvodena", "[39] AM - Mnozstvo z odvodenej MJ", "[40] AN - cislo stredisko", 
+        "[41] AO - cislo zakazka", "[42] AP - cislo cinnost", "[43] AQ - cislo pracovnik", "[44] AR - ExtCisloPolozky", 
+        "[45] AS - Zaokruhlenie", "[46] AT - Spôsob zaokruhlenia", "[47] AU - bola vybavena rucne", "[48] AV - nazov zlavy", 
+        "[49] AW - cennikova cena s DPH", "[50] AX - ceny boli zadavane s DPH", "[51] AY - jedn. cena s DPH", "[52] AZ - zlava v EUR bez DPH", 
+        "[53] BA - zlava v EUR s DPH", "[54] BB - Oddiel KVDPH", "[55] BC - Druh tovaru KVDPH", "[56] BD - Kod tovaru KVDPH", 
+        "[57] BE - MJ pre KVDH", "[58] BF - Mnozstvo KVDPH"
+    ];
+
+    let parsedData = { partners: [], invoices: [] };
+    let currentFileText = "";
+
+    function switchVersion() {
+        const ver = document.getElementById('versionSelect').value;
+        const panel = document.getElementById('infoPanel');
+        const content = document.getElementById('infoContent');
+
+        if (ver === '2025') {
+            panel.className = "info-panel";
+            content.innerHTML = `<strong>Zvolená verzia:</strong> Doklady od roku 2025.<br>
+            <strong>Zdrojový súbor mapovania:</strong> <code>ImportExport_28_00_2025.xls</code><br>
+            <strong>Dokumentácia KROS:</strong> <a href="https://akademia.kros.sk/faq/ekonomika-a-podnikanie/import-a-export-udajov-z-ineho-softveru-pre-doklady-od-roku-2025/" target="_blank">Import a export údajov z iného softvéru pre doklady od roku 2025</a><br>
+            <a href="https://ftpkros.sk/files/documents/general/omega/2025/FAQ/ImportExport_28_00_2025.xls" target="_blank">Štruktúra pre import dokladov od roku 2025 (xls súbor)</a>`;
+        } else {
+            panel.className = "info-panel v-2024";
+            content.innerHTML = `<strong>Zvolená verzia:</strong> Doklady do roku 2024.<br>
+            <strong>Zdrojový súbor mapovania:</strong> <code>Import_24_60.xls</code><br>
+            <strong>Dokumentácia KROS:</strong> <a href="https://akademia.kros.sk/faq/ekonomika-a-podnikanie/import-a-export-udajov-z-ineho-softveru-pre-doklady-od-roku-2025/" target="_blank">Import a export údajov z iného softvéru pre doklady do roku 2024</a><br>
+            <a href="https://ftpkros.sk/files/documents/general/omega/2021/FAQ/Import_24_60.xls" target="_blank">Štruktúra pre import dokladov do roku 2024 (xls súbor)</a>`;
+        }
+
+        if (currentFileText) {
+            parseFile(currentFileText);
+            populatePartnerFilter();
+            renderView();
+        }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            currentFileText = e.target.result;
+            parseFile(currentFileText);
+            populatePartnerFilter();
+            renderView();
+            document.getElementById('filterControls').classList.remove('hidden');
+        };
+        reader.readAsText(file, 'windows-1250'); 
+    });
+
+    document.getElementById('partnerFilter').addEventListener('change', function() {
+        populateInvoiceFilter(); 
+        renderView();            
+    });
+    
+    document.getElementById('invoiceFilter').addEventListener('change', renderView);
+
+    function parseFile(text) {
+        const lines = text.split(/\r?\n/);
+        parsedData = { partners: [], invoices: [] };
+        let currentSection = "";
+        let currentInvoice = null;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) continue;
+            
+            const parts = line.split('\t');
+            const type = parts[0];
+
+            if (type === 'R00') {
+                currentSection = parts[1] ? parts[1].trim() : "";
+            } 
+            else if (currentSection === 'T04' && type === 'R01') {
+                parsedData.partners.push({ raw: parts, name: parts[1] || 'Neznámy' });
+            }
+            else if (currentSection === 'T01') {
+                if (type === 'R01') {
+                    currentInvoice = { header: parts, items: [], invNumber: parts[1] || 'Neznáme číslo' };
+                    parsedData.invoices.push(currentInvoice);
+                } else if (type === 'R02' && currentInvoice) {
+                    currentInvoice.items.push(parts);
+                }
+            }
+        }
+    }
+
+    function populatePartnerFilter() {
+        const pFilter = document.getElementById('partnerFilter');
+        pFilter.innerHTML = '<option value="ALL">-- Zobraziť všetkých (T04) --</option>';
+
+        parsedData.partners.forEach((p, idx) => {
+            if(p.name) {
+                const ico = p.raw[2] ? ` (IČO: ${p.raw[2].trim()})` : "";
+                pFilter.innerHTML += `<option value="${idx}">${p.name}${ico}</option>`;
+            }
+        });
+        
+        populateInvoiceFilter();
+    }
+
+    function populateInvoiceFilter() {
+        const selectedPartnerIdx = document.getElementById('partnerFilter').value;
+        const iFilter = document.getElementById('invoiceFilter');
+        iFilter.innerHTML = '<option value="ALL">-- Zobraziť všetky (T01) --</option>';
+
+        parsedData.invoices.forEach((inv, originalIdx) => {
+            let matchesPartner = true;
+            
+            if (selectedPartnerIdx !== "ALL") {
+                const p = parsedData.partners[selectedPartnerIdx];
+                const partnerIco = p.raw[2] ? p.raw[2].trim() : null;
+                const partnerName = p.name ? p.name.trim() : null;
+                
+                const invIco = inv.header[3] ? inv.header[3].trim() : null;
+                const invName = inv.header[2] ? inv.header[2].trim() : null;
+                
+                matchesPartner = (partnerIco && partnerIco === invIco) || (partnerName && partnerName === invName);
+            }
+            
+            if (matchesPartner && inv.invNumber) {
+                iFilter.innerHTML += `<option value="${originalIdx}">${inv.invNumber} (${inv.header[2] || ''})</option>`;
+            }
+        });
+    }
+
+    function getCellHtml(val, colIndex, rowType, section) {
+        let cellClass = "";
+        let finalVal = val !== undefined ? val : "";
+
+        if (section === 'T04' && rowType === 'R01') {
+            if ((colIndex === 1 || colIndex === 2) && finalVal.trim() === "") cellClass = "error-cell";
+        }
+        else if (section === 'T01' && rowType === 'R01') {
+            if ((colIndex === 1 || colIndex === 2 || colIndex === 4) && finalVal.trim() === "") cellClass = "error-cell";
+        }
+        else if (section === 'T01' && rowType === 'R02') {
+            const ver = document.getElementById('versionSelect').value;
+            if (ver === '2025' && colIndex === 29 && ["01", "02", "Y01*", "Y02*"].includes(finalVal.trim())) {
+                cellClass = "highlight-2025";
+                finalVal += " ✓";
+            }
+        }
+
+        return `<td class="${cellClass}">${finalVal}</td>`;
+    }
+
+    function generateTable(dataArray, mapArray, rowClass, thClass, section) {
+        let html = `<div class="table-wrapper"><table><thead><tr>`;
+        mapArray.forEach(col => html += `<th class="${thClass}">${col}</th>`);
+        html += `</tr></thead><tbody>`;
+        
+        dataArray.forEach(row => {
+            html += `<tr class="${rowClass}">`;
+            const maxCols = Math.max(row.length, mapArray.length);
+            for (let j = 0; j < maxCols; j++) {
+                html += getCellHtml(row[j], j, rowClass.toUpperCase(), section);
+            }
+            html += `</tr>`;
+        });
+        
+        html += `</tbody></table></div>`;
+        return html;
+    }
+
+    function renderView() {
+        const selectedPartner = document.getElementById('partnerFilter').value;
+        const selectedInvoice = document.getElementById('invoiceFilter').value;
+        const ver = document.getElementById('versionSelect').value;
+        const activeR01Map = (ver === '2025') ? T01_R01_Map_2025 : T01_R01_Map_2024;
+        
+        let html = "";
+
+        const partnersToRender = selectedPartner === "ALL" 
+            ? parsedData.partners 
+            : (parsedData.partners[selectedPartner] ? [parsedData.partners[selectedPartner]] : []);
+
+        if (partnersToRender.length > 0) {
+            html += `<h2>Blok: T04 - Partneri</h2>`;
+            const rawData = partnersToRender.map(p => p.raw);
+            html += generateTable(rawData, T04_R01_Map, 'r01', 'th-t04', 'T04');
+        }
+
+        const invoicesToRender = selectedInvoice === "ALL" 
+            ? parsedData.invoices 
+            : (parsedData.invoices[selectedInvoice] ? [parsedData.invoices[selectedInvoice]] : []);
+            
+        const finalInvoices = [];
+        invoicesToRender.forEach(inv => {
+            let matchesPartner = true;
+            if (selectedPartner !== "ALL") {
+                const p = parsedData.partners[selectedPartner];
+                const pIco = p.raw[2] ? p.raw[2].trim() : null;
+                const pName = p.name ? p.name.trim() : null;
+                const invIco = inv.header[3] ? inv.header[3].trim() : null;
+                const invName = inv.header[2] ? inv.header[2].trim() : null;
+                
+                matchesPartner = (pIco && pIco === invIco) || (pName && pName === invName);
+            }
+            if (matchesPartner) finalInvoices.push(inv);
+        });
+
+        if (finalInvoices.length > 0) {
+            html += `<h2>Blok: T01 - Faktúry</h2>`;
+            finalInvoices.forEach(inv => {
+                html += `<div class="invoice-block">`;
+                html += `<h3>Faktúra č. ${inv.invNumber} <span style="color:#7f8c8d; font-size: 14px;">(${inv.header[2] || 'Bez odberateľa'})</span></h3>`;
+                
+                html += `<h4>Hlavička faktúry (R01)</h4>`;
+                html += generateTable([inv.header], activeR01Map, 'r01', 'th-r01', 'T01');
+                
+                if (inv.items.length > 0) {
+                    html += `<h4>Položky faktúry (R02)</h4>`;
+                    html += generateTable(inv.items, T01_R02_Map, 'r02', 'th-r02', 'T01');
+                }
+                html += `</div>`;
+            });
+        }
+
+        if (html === "") {
+            html = "<p>Žiadne dáta nezodpovedajú zvolenému filtru.</p>";
+        }
+
+        document.getElementById('output').innerHTML = html;
+    }
+
+    switchVersion();
+</script>
+</body>
+</html>
