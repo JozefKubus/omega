@@ -2,7 +2,7 @@
 <html lang="sk">
 <head>
     <meta charset="UTF-8">
-    <title>Omega Export Kontrola (Finálna verzia s číselníkom typov súm)</title>
+    <title>Omega Export Kontrola (Finálna verzia so skrývaním stĺpcov)</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
         h1 { color: #2c3e50; margin-bottom: 10px; }
@@ -15,7 +15,7 @@
         .info-panel a:hover { text-decoration: underline; }
         .info-panel code { background-color: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 3px; font-weight: bold; }
         
-        .controls-area { margin-bottom: 20px; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .controls-area { margin-bottom: 20px; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 5px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         select, input[type="file"] { padding: 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
         select { min-width: 250px; }
         
@@ -50,31 +50,36 @@
 <div class="controls-area">
     <div>
         <label for="versionSelect"><strong>Zvoľte verziu (legislatívny rok):</strong></label><br>
-        <select id="versionSelect" onchange="switchVersion()">
+        <select id="versionSelect" onchange="switchVersion()" style="margin-top: 5px;">
             <option value="2025">Doklady od roku 2025</option>
             <option value="2024">Doklady do roku 2024</option>
         </select>
     </div>
     <div>
         <label for="fileInput"><strong>Nahrať .txt export:</strong></label><br>
-        <input type="file" id="fileInput" accept=".txt" style="width: 400px;">
+        <input type="file" id="fileInput" accept=".txt" style="width: 300px; margin-top: 5px;">
     </div>
     <div>
         <label><strong>Zobrazenie:</strong></label><br>
-        <label style="cursor: pointer; font-size: 14px; user-select: none;">
-            <input type="checkbox" id="toggleSumInfo" checked onchange="renderView()"> Zobraziť detaily typov súm v položkách
-        </label>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+            <label style="cursor: pointer; font-size: 14px; user-select: none;">
+                <input type="checkbox" id="toggleSumInfo" checked onchange="renderView()"> Zobraziť detaily typov súm (R02)
+            </label>
+            <label style="cursor: pointer; font-size: 14px; user-select: none;">
+                <input type="checkbox" id="toggleEmptyCols" onchange="renderView()"> Skryť prázdne stĺpce
+            </label>
+        </div>
     </div>
-    <div id="filterControls" class="hidden" style="display:flex; gap:20px; flex-wrap: wrap; align-items: flex-end; width: 100%;">
+    <div id="filterControls" class="hidden" style="display:flex; gap:20px; flex-wrap: wrap; align-items: flex-start; width: 100%;">
         <div>
             <label for="partnerFilter"><strong>Filter: Partneri (T04)</strong></label><br>
-            <select id="partnerFilter">
+            <select id="partnerFilter" style="margin-top: 5px;">
                 <option value="ALL">-- Zobraziť všetkých --</option>
             </select>
         </div>
         <div>
             <label for="invoiceFilter"><strong>Filter: Faktúry (T01)</strong></label><br>
-            <select id="invoiceFilter">
+            <select id="invoiceFilter" style="margin-top: 5px;">
                 <option value="ALL">-- Zobraziť všetky --</option>
             </select>
         </div>
@@ -317,15 +322,17 @@
         });
     }
 
-    function getCellHtml(val, colIndex, rowType, section) {
-        let cellClass = "";
+    function getCellHtml(val, colIndex, rowType, section, isHidden) {
+        let classes = [];
+        if (isHidden) classes.push("hidden");
+        
         let finalVal = val !== undefined ? val : "";
 
         if (section === 'T04' && rowType === 'R01') {
-            if ((colIndex === 1 || colIndex === 2) && finalVal.trim() === "") cellClass = "error-cell";
+            if ((colIndex === 1 || colIndex === 2) && finalVal.trim() === "") classes.push("error-cell");
         }
         else if (section === 'T01' && rowType === 'R01') {
-            if ((colIndex === 1 || colIndex === 2 || colIndex === 4) && finalVal.trim() === "") cellClass = "error-cell";
+            if ((colIndex === 1 || colIndex === 2 || colIndex === 4) && finalVal.trim() === "") classes.push("error-cell");
         }
         else if (section === 'T01' && rowType === 'R02') {
             const ver = document.getElementById('versionSelect').value;
@@ -337,7 +344,7 @@
                 const dictEntry = sumTypesDictionary[codeTrim];
                 
                 if (ver === '2025' && ["01", "02", "Y01*", "Y02*"].includes(codeTrim)) {
-                    cellClass = "highlight-2025";
+                    classes.push("highlight-2025");
                 }
 
                 if (showSumInfo) {
@@ -356,19 +363,50 @@
             }
         }
 
+        const cellClass = classes.join(" ");
         return `<td class="${cellClass}">${finalVal}</td>`;
     }
 
     function generateTable(dataArray, mapArray, rowClass, thClass, section) {
+        const hideEmpty = document.getElementById('toggleEmptyCols').checked;
+        
+        // Určíme maximálny počet stĺpcov
+        let maxCols = mapArray.length;
+        dataArray.forEach(row => {
+            if (row.length > maxCols) maxCols = row.length;
+        });
+
+        // Nájdeme kompletne prázdne stĺpce pre túto konkrétnu tabuľku
+        let emptyCols = new Set();
+        if (hideEmpty) {
+            for (let j = 0; j < maxCols; j++) {
+                let isEmpty = true;
+                for (let i = 0; i < dataArray.length; i++) {
+                    let val = dataArray[i][j];
+                    if (val !== undefined && val !== null && val.toString().trim() !== "") {
+                        isEmpty = false;
+                        break;
+                    }
+                }
+                if (isEmpty) {
+                    emptyCols.add(j);
+                }
+            }
+        }
+
         let html = `<div class="table-wrapper"><table><thead><tr>`;
-        mapArray.forEach(col => html += `<th class="${thClass}">${col}</th>`);
+        for (let j = 0; j < maxCols; j++) {
+            let colName = mapArray[j] || `Stĺpec ${j+1}`;
+            let hiddenClass = emptyCols.has(j) ? " hidden" : "";
+            html += `<th class="${thClass}${hiddenClass}">${colName}</th>`;
+        }
         html += `</tr></thead><tbody>`;
         
         dataArray.forEach(row => {
             html += `<tr class="${rowClass}">`;
-            const maxCols = Math.max(row.length, mapArray.length);
             for (let j = 0; j < maxCols; j++) {
-                html += getCellHtml(row[j], j, rowClass.toUpperCase(), section);
+                let isHidden = emptyCols.has(j);
+                html += getCellHtml(row[j], j, rowClass.toUpperCase(), section, isHidden);
             }
             html += `</tr>`;
         });
