@@ -36,7 +36,38 @@
         .highlight-2025 { background-color: #c8e6c9 !important; color: #27ae60; font-weight: bold; }
         .sum-type-info { font-size: 11px; color: #555; margin-top: 4px; border-top: 1px dashed #ccc; padding-top: 3px; }
         .sum-type-badge { display: inline-block; background: #e0f2f1; color: #00796b; padding: 2px 5px; border-radius: 3px; font-weight: bold; font-family: monospace; }
-        .hidden { display: none !important; }		
+        .hidden { display: none !important; }
+        
+        /* Štýly pre odtlačok / footer */
+        .footer-imprint {
+            margin-top: 50px;
+            padding: 20px;
+            background-color: #fff;
+            border-top: 2px solid #bdc3c7;
+            text-align: center;
+            color: #555;
+            font-size: 14px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 -2px 4px rgba(0,0,0,0.02);
+        }
+        .footer-imprint img {
+            height: 45px;
+            margin-bottom: 15px;
+            vertical-align: middle;
+        }
+        .footer-imprint a {
+            color: #2980b9;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .footer-imprint a:hover {
+            text-decoration: underline;
+        }
+        .footer-imprint .version-info {
+            font-size: 12px;
+            color: #95a5a6;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -87,6 +118,21 @@
 </div>
 
 <div id="output"></div>
+
+<!-- ODTLAČOK / FOOTER -->
+<div class="footer-imprint">
+    <a href="https://www.dodosys.sk" target="_blank" title="Dodo systems s.r.o.">
+        <!-- Zmeňte 'src' atribút na URL vášho reálneho loga -->
+        <img src="https://www.dodosys.sk/web/image/website/2/logo/Dodo%20Systems%20s.r.o.?unique=d1a601a" alt="Logo Dodosys s.r.o.">
+    </a>
+    <p>
+        Vytvoril <strong>Ing. Jozef Kubus</strong> | 
+        <a href="https://www.dodosystems.sk" target="_blank">Dodo systems s.r.o.</a>
+    </p>
+    <p class="version-info">
+        Verzia nástroja: 1.2.0 &bull; Dátum vydania: 25. augusta 2026
+    </p>
+</div>
 
 <script>
     // Kompletný číselník typov súm DPH (vrátane platných od roku 2025)
